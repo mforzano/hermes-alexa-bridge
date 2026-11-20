@@ -20,6 +20,17 @@ def identifier(value):
     return isinstance(value, str) and re.fullmatch(r'[!-~]{1,512}', value) is not None
 
 
+def fresh_timestamp(stamp):
+    if not isinstance(stamp, str) or not re.fullmatch(
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})', stamp, re.ASCII):
+        return False
+    try:
+        when = datetime.fromisoformat(stamp.replace('Z', '+00:00'))
+        return abs((datetime.now(timezone.utc) - when).total_seconds()) <= FRESH_SECONDS
+    except (ValueError, OverflowError):
+        return False
+
+
 @dataclass(frozen=True)
 class Policy:
     skill_id: str
@@ -128,10 +139,7 @@ class Bridge:
             entity = self.policy.routes.get((user, device))
             if entity is None:
                 return 'rejected'
-            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})', stamp, re.ASCII):
-                return 'rejected'
-            when = datetime.fromisoformat(stamp.replace('Z', '+00:00'))
-            if abs((datetime.now(timezone.utc) - when).total_seconds()) > FRESH_SECONDS:
+            if not fresh_timestamp(stamp):
                 return 'rejected'
             if request['type'] == 'LaunchRequest':
                 return 'launch'
