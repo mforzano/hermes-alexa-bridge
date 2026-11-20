@@ -105,13 +105,32 @@ class Run:
     control_seen: bool = False
 
 
+def paired_request(policy, event):
+    system = event['context']['System']
+    skill = system['application']['applicationId']
+    user, device = system['user']['userId'], system['device']['deviceId']
+    request = event['request']
+    rid, stamp = request['requestId'], request['timestamp']
+    if (event['version'] != '1.0' or skill != policy.skill_id
+            or not all(map(identifier, (user, device, rid))) or not fresh_timestamp(stamp)):
+        raise ValueError('invalid request scope or freshness')
+    entity = policy.routes.get((user, device))
+    if entity is None:
+        raise ValueError('unpaired request')
+    return request, skill, user, device, entity, rid, stamp
+
+
 class Bridge:
     def __init__(self, policy, hermes, speak, *, max_pending=4, max_seen=256,
-                 queue_max_age=120, clock=monotonic, poll_interval=0.25, run_timeout=600):
+                 queue_max_age=120, clock=monotonic, poll_interval=0.25, run_timeout=600,
+                 lane=None):
         if not 1 <= max_pending <= max_seen <= 4096 or not 1 <= queue_max_age <= 300:
             raise ValueError('invalid queue limits')
         if not 0 < poll_interval <= 10 or not 0 < run_timeout <= 3600:
             raise ValueError('invalid Runs timing limits')
+        if lane not in (None, 'owner', 'guest'):
+            raise ValueError('invalid profile lane')
+        self.lane = lane
         self.policy, self.hermes, self.speak = policy, hermes, speak
         self.poll_interval, self.run_timeout = poll_interval, run_timeout
         self.max_pending, self.max_seen = max_pending, max_seen
@@ -128,19 +147,7 @@ class Bridge:
     def submit_verified(self, event):
         """Accept only from an authenticated adapter or in-process synthetic fixture."""
         try:
-            system = event['context']['System']
-            skill = system['application']['applicationId']
-            user, device = system['user']['userId'], system['device']['deviceId']
-            request = event['request']
-            rid, stamp = request['requestId'], request['timestamp']
-            if (event['version'] != '1.0' or skill != self.policy.skill_id
-                    or not all(map(identifier, (user, device, rid, stamp)))):
-                return 'rejected'
-            entity = self.policy.routes.get((user, device))
-            if entity is None:
-                return 'rejected'
-            if not fresh_timestamp(stamp):
-                return 'rejected'
+            request, skill, user, device, entity, rid, stamp = paired_request(self.policy, event)
             if request['type'] == 'LaunchRequest':
                 return 'launch'
             if request['type'] == 'SessionEndedRequest':
@@ -157,7 +164,9 @@ class Bridge:
             return 'rejected'
 
         conversation = self.policy.conversation_for(device)
-        key = 'alexa-' + hashlib.sha256(json.dumps([skill, rid]).encode()).hexdigest()
+        key = self.request_key(skill, rid)
+        if self.lane is not None:
+            conversation = f'alexa:{self.lane}:' + conversation.removeprefix('alexa:')
         fingerprint = hashlib.sha256(json.dumps([user, device, stamp, text]).encode()).digest()
         with self.cv:
             if self.closed or not self.worker.is_alive():
@@ -180,6 +189,15 @@ class Bridge:
             self.stats['accepted'] += 1
             self.cv.notify_all()
         return 'steering' if target else 'accepted'
+
+    def request_key(self, skill, rid):
+        prefix = 'alexa-' if self.lane is None else f'alexa-{self.lane}-'
+        return prefix + hashlib.sha256(json.dumps([skill, rid]).encode()).hexdigest()
+
+    def has_admitted(self, skill, rid):
+        with self.cv:
+            entry = self.seen.get(self.request_key(skill, rid))
+            return entry is not None and self.clock() < entry[1]
 
     def _work(self):
         # Only this worker performs network I/O. Admission never waits for it.

@@ -7,15 +7,19 @@ import re
 import signal
 import stat
 import sys
+import warnings
+from getpass import GetPassWarning, getpass
 from http import HTTPStatus
 from pathlib import Path
 from threading import Lock
-from time import monotonic
+from time import monotonic, time
 from urllib.parse import urlsplit
 
 from bridge import Bridge, Policy, identifier
-from clients import Hermes, HomeAssistant
+from clients import Hermes, HomeAssistant, OWNER_VOICE_INSTRUCTIONS
 from ingress import CERT_URL, MAX_BODY, _not_json, _unique, alexa_sdk_verifier, handle_alexa
+from owner_routing import VoiceRouter, read_fingerprint
+from voice_identity import VoiceEnrollment
 
 HOST = '127.0.0.1'
 PORT = 8765
@@ -90,17 +94,62 @@ def read_config(path):
     return json.loads(raw.decode('utf-8'), object_pairs_hook=_unique, parse_constant=_not_json)
 
 
-def configured_clients(path):
+def origin_identity(origin):
+    url = urlsplit(origin)
+    if url.port == 0:
+        raise ValueError('invalid upstream port')
+    return url.scheme, (url.hostname or '').rstrip('.'), url.port or (443 if url.scheme == 'https' else 80)
+
+
+def configured_service(path, *, check_only=False, enroll_from=None, enrollment_phrase=None):
     data = read_config(path)
-    if not isinstance(data, dict) or set(data) != {'routes_file', 'hermes_origin', 'ha_origin'}:
+    required = {'routes_file', 'hermes_origin', 'ha_origin'}
+    if not isinstance(data, dict) or not required <= data.keys() <= required | {'owner'}:
         raise ValueError('invalid config fields')
     routes = Policy.from_config(read_config(path.parent / data['routes_file']))
     for key in ('hermes_origin', 'ha_origin'):
-        if urlsplit(data[key]).port == 0:
-            raise ValueError('invalid upstream port')
-    h = Hermes(data['hermes_origin'], os.environ['HERMES_ALEXA_HERMES_TOKEN'])
+        origin_identity(data[key])
+    guest_key = os.environ['HERMES_ALEXA_HERMES_TOKEN']
+    h = Hermes(data['hermes_origin'], guest_key)
     ha = HomeAssistant(data['ha_origin'], os.environ['HERMES_ALEXA_HA_TOKEN'])
-    return routes, h, ha
+    if 'owner' not in data:
+        if enroll_from is not None:
+            raise ValueError('configure the owner API before arming enrollment')
+        return None if check_only else Bridge(routes, h, ha.speak)
+
+    owner = data['owner']
+    if (not isinstance(owner, dict) or owner.keys() != {'hermes_origin', 'fingerprint_file'}
+            or not isinstance(owner['fingerprint_file'], str) or not owner['fingerprint_file']):
+        raise ValueError('invalid owner configuration')
+    owner_key = os.environ['HERMES_ALEXA_OWNER_TOKEN']
+    if owner_key == guest_key or origin_identity(owner['hermes_origin']) == origin_identity(data['hermes_origin']):
+        raise ValueError('owner and guest require distinct origins and keys')
+    owner_client = Hermes(owner['hermes_origin'], owner_key, instructions=OWNER_VOICE_INSTRUCTIONS)
+    fingerprint_path = path.parent / owner['fingerprint_file']
+    if (not fingerprint_path.parent.is_dir()
+            or (os.name == 'posix' and fingerprint_path.parent.stat().st_mode & 0o077)):
+        raise ValueError('enrollment needs a private directory')
+    try:
+        fingerprint, consumed = read_fingerprint(fingerprint_path)
+    except FileNotFoundError:
+        fingerprint = consumed = None
+
+    enrollment = None
+    if enroll_from is not None:
+        if fingerprint is not None or check_only:
+            raise ValueError('enrollment requires a new fingerprint file and serve mode')
+        pair = read_config(enroll_from)
+        if not isinstance(pair, dict) or pair.keys() != {'user_id', 'device_id'}:
+            raise ValueError('invalid enrollment Echo capture')
+        user, device = pair['user_id'], pair['device_id']
+        if not all(map(identifier, (user, device))) or (user, device) not in routes.routes:
+            raise ValueError('enrollment Echo is not paired')
+        if (not isinstance(enrollment_phrase, str)
+                or not re.fullmatch(r'register(?: [a-z]+){5,12}', enrollment_phrase)):
+            raise ValueError('enrollment phrase must be register followed by 5–12 lowercase words')
+        enrollment = VoiceEnrollment((routes.skill_id, user, device), fingerprint_path, enrollment_phrase,
+                                     monotonic() + 120, clock=monotonic, signed_after=time())
+    return None if check_only else VoiceRouter(routes, h, owner_client, ha.speak, fingerprint, enrollment, consumed)
 
 
 def capture_one(skill_id, output, *, clock=monotonic):
@@ -146,6 +195,8 @@ def main(argv=None):
         cmd.add_argument('--config', type=Path, required=True)
         if command == 'serve':
             cmd.add_argument('--port', type=int, default=PORT, choices=range(1, 65536), metavar='PORT')
+            cmd.add_argument('--enroll-from', type=Path, metavar='PAIR_CAPTURE',
+                             help='arm one owner enrollment for this paired Echo for 120 seconds')
     cmd = sub.add_parser('capture', help='arm one private identity capture for 120 seconds')
     cmd.add_argument('--skill-id', required=True)
     cmd.add_argument('--output', type=Path, required=True)
@@ -165,11 +216,18 @@ def main(argv=None):
         if args.command == 'capture':
             submit = capture_one(args.skill_id, args.output)
         else:
-            routes, hermes, ha = configured_clients(args.config)
             if args.command == 'check':
+                configured_service(args.config, check_only=True)
                 print(f'Configuration OK; ASK SDK {sdk}; no network checks.', flush=True)
                 return 0
-            bridge = Bridge(routes, hermes, ha.speak)
+            phrase = None
+            if args.enroll_from is not None:
+                if not sys.stdin.isatty():
+                    raise ValueError('enrollment requires a private interactive terminal')
+                with warnings.catch_warnings():
+                    warnings.simplefilter('error', GetPassWarning)
+                    phrase = getpass('Private enrollment phrase (register followed by 5–12 random lowercase words): ')
+            bridge = configured_service(args.config, enroll_from=args.enroll_from, enrollment_phrase=phrase)
             submit = bridge.submit_verified
         http = listener(skill_app(verify, submit), args.port)
         print(f'{args.command}: listening on {HOST}:{args.port}{ROUTE}; ASK SDK {sdk}', flush=True)

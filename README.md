@@ -22,7 +22,7 @@ The app listens only on `127.0.0.1:8765` by default. nginx forwards only `POST /
 
 ## Pair an Echo and choose access
 
-See [Onboarding: pairing, Voice ID, and guest access](docs/onboarding.md) for what the public bridge supports today and how experimental voice registration is intended to work. Pairing identifies the Echo, not the person speaking.
+See [Onboarding: pairing, Voice ID, and guest access](docs/onboarding.md) for optional owner access and a separate web-only guest profile. Pairing identifies the Echo, not the person speaking.
 
 ## Try the synthetic demo
 

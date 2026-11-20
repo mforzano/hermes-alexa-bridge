@@ -13,6 +13,9 @@ MAX_RESPONSE = 1024 * 1024
 MAX_SPEECH = 600
 VOICE_INSTRUCTIONS = ('This is a shared-room voice channel. Answer briefly in plain language suitable for speech. '
                       'Do not disclose credentials or private information or perform consequential actions.')
+OWNER_VOICE_INSTRUCTIONS = ('This is an enrolled-owner voice channel, but replies may be overheard. '
+                            'Answer briefly in plain language suitable for speech. Use configured tools as appropriate. '
+                            'Never speak credentials or bypass any required approval.')
 
 
 class UpstreamError(Exception):
@@ -105,8 +108,9 @@ class _Endpoint:
 
 
 class Hermes:
-    def __init__(self, origin, token, *, timeout=75):
+    def __init__(self, origin, token, *, timeout=75, instructions=VOICE_INSTRUCTIONS):
         self.endpoint = _Endpoint(origin, token, timeout)
+        self.instructions = instructions
 
     @staticmethod
     def _run_path(run_id):
@@ -115,7 +119,7 @@ class Hermes:
         return '/v1/runs/' + run_id
 
     def start(self, question, request_key, conversation):
-        answer = self.endpoint.post('/v1/runs', {'input': question, 'instructions': VOICE_INSTRUCTIONS},
+        answer = self.endpoint.post('/v1/runs', {'input': question, 'instructions': self.instructions},
                                     {'X-Hermes-Session-Key': conversation, 'Idempotency-Key': request_key})
         run_id = answer.get('run_id') if isinstance(answer, dict) else None
         self._run_path(run_id)

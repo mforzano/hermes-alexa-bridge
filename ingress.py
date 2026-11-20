@@ -23,6 +23,9 @@ SPEECH = {
     'rejected': 'I couldn’t accept that request.',
     'setup': 'Pairing was not recorded.',
     'paired': 'Echo pairing recorded.',
+    'voice_enrolled': 'Voice ID recorded.',
+    'voice_unrecognized': 'Alexa did not recognize your voice profile.',
+    'voice_enrollment_unavailable': 'Voice enrollment is not available on this Echo right now.',
 }
 
 

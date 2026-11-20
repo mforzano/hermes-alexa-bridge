@@ -1,0 +1,9 @@
+{
+  "routes_file": "routes.private.json",
+  "hermes_origin": "http://127.0.0.1:8643",
+  "ha_origin": "https://ha.example.net",
+  "owner": {
+    "hermes_origin": "http://127.0.0.1:8642",
+    "fingerprint_file": "owner-voice.private.sha256"
+  }
+}

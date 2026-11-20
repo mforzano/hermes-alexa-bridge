@@ -15,10 +15,8 @@ from pathlib import Path
 from threading import Thread
 from unittest.mock import Mock, patch
 
-from bridge import Bridge, Policy
-from clients import Hermes, HomeAssistant
 from ingress import MAX_BODY, alexa_sdk_verifier
-from server import capture_one, listener, skill_app
+from server import capture_one, configured_service, listener, skill_app
 from synthetic import json_response, synthetic_server
 from test_bridge import envelope
 from test_server import CERT, call
@@ -113,7 +111,7 @@ class InstalledAppTests(unittest.TestCase):
                     stdout, stderr = proc.communicate(timeout=15)
                 self.assertNotIn('fixture-', stdout + stderr)
 
-    def test_real_sdk_checks_synthetic_certificate_signature_and_body_over_http(self):
+    def test_real_sdk_enrolls_then_routes_signed_owner_and_guest_over_http(self):
         from ask_sdk_webservice_support import verifier as sdk
         from certvalidator import ValidationContext
         from cryptography import x509
@@ -155,15 +153,36 @@ class InstalledAppTests(unittest.TestCase):
             'run_id': 'run_fixture', 'status': 'completed', 'output': 'Synthetic answer.'}}
         event = envelope()
         system = event['context']['System']
-        policy = Policy(system['application']['applicationId'], {
-            (system['user']['userId'], system['device']['deviceId']): 'notify.synthetic_speak'})
-        raw = json.dumps(event, indent=2).encode() + b'\n'
-        sig = base64.b64encode(key.sign(raw, padding.PKCS1v15(), hashes.SHA256())).decode()
-        with (synthetic_server(lambda path, *_: json_response(fake_runs[path])) as (hermes, calls),
+        system['person'] = {'personId': 'synthetic-owner'}
+        phrase = 'register amber violet willow sunflower daffodil'
+        event['request']['intent']['slots']['question']['value'] = phrase
+        def sign(body):
+            return base64.b64encode(key.sign(body, padding.PKCS1v15(), hashes.SHA256())).decode()
+        with (synthetic_server(lambda path, *_: json_response(fake_runs[path])) as (guest, guest_calls),
+              synthetic_server(lambda path, *_: json_response(fake_runs[path])) as (owner, owner_calls),
               synthetic_server(lambda *_: json_response([])) as (ha, spoken),
+              tempfile.TemporaryDirectory() as tmp,
               patch('ingress.build_opener', return_value=opener),
               patch.object(sdk, 'CertificateValidator', side_effect=fixture_validator)):
-            bridge = Bridge(policy, Hermes(hermes, 'fixture'), HomeAssistant(ha, 'fixture').speak)
+            root = Path(tmp)
+            root.chmod(0o700)
+            pair = {'user_id': system['user']['userId'], 'device_id': system['device']['deviceId']}
+            for name, data in {
+                'bridge.json': {'routes_file': 'routes.json', 'hermes_origin': guest, 'ha_origin': ha,
+                                'owner': {'hermes_origin': owner, 'fingerprint_file': 'owner.digest'}},
+                'routes.json': {'skill_id': system['application']['applicationId'],
+                                'routes': [{**pair, 'entity_id': 'notify.synthetic_speak'}]},
+                'pair.json': pair,
+            }.items():
+                (root / name).write_text(json.dumps(data), encoding='ascii')
+                (root / name).chmod(0o600)
+            with patch.dict(os.environ, HERMES_ALEXA_HERMES_TOKEN='fixture-guest',
+                            HERMES_ALEXA_OWNER_TOKEN='fixture-owner', HERMES_ALEXA_HA_TOKEN='fixture-ha'):
+                bridge = configured_service(root / 'bridge.json', enroll_from=root / 'pair.json',
+                                            enrollment_phrase=phrase)
+            event['request']['timestamp'] = envelope()['request']['timestamp']
+            raw = json.dumps(event, indent=2).encode() + b'\n'
+            sig = sign(raw)
             http = listener(skill_app(alexa_sdk_verifier(), bridge.submit_verified), 0)
             port = int(http.effective_port)
             thread = Thread(target=http.run, daemon=True)
@@ -172,12 +191,29 @@ class InstalledAppTests(unittest.TestCase):
                 self.assertEqual(request(port, raw + b' ', signature=sig)[0], 400)
                 # The HTTP server must reject case-insensitive duplicate signing headers.
                 self.assertEqual(request(port, raw, signature=sig, duplicate=True)[0], 400)
-                self.assertEqual(calls, [])
+                self.assertFalse((root / 'owner.digest').exists())
                 status, reply = request(port, raw, signature=sig)
                 self.assertEqual(status, 200)
-                self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'], 'Working on it.')
+                self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'], 'Voice ID recorded.')
+                self.assertEqual(guest_calls + owner_calls, [])
+                for person in ('synthetic-owner', 'synthetic-guest'):
+                    ordinary = envelope(rid=person, text='question for ' + person)
+                    ordinary['context']['System']['person'] = {'personId': person}
+                    body = json.dumps(ordinary).encode()
+                    status, reply = request(port, body, signature=sign(body))
+                    self.assertEqual(status, 200)
+                    self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'], 'Working on it.')
                 self.assertTrue(bridge.wait_idle(4))
-                self.assertEqual(spoken[0][2], {'entity_id': 'notify.synthetic_speak', 'message': 'Synthetic answer.'})
+                for lane, calls in (('owner', owner_calls), ('guest', guest_calls)):
+                    self.assertEqual([entry[0] for entry in calls], ['/v1/runs', '/v1/runs/run_fixture'])
+                    _, headers, payload = calls[0]
+                    self.assertEqual(headers['Authorization'], 'Bearer fixture-' + lane)
+                    self.assertTrue(headers['X-Hermes-Session-Key'].startswith('alexa:' + lane + ':'))
+                    self.assertEqual(payload['input'], 'question for synthetic-' + lane)
+                    self.assertEqual('Do not disclose credentials or private information' in payload['instructions'],
+                                     lane == 'guest')
+                self.assertEqual([entry[2] for entry in spoken], [
+                    {'entity_id': 'notify.synthetic_speak', 'message': 'Synthetic answer.'}] * 2)
                 opener.open.assert_called_once_with(CERT, timeout=2)
             finally:
                 http.task_dispatcher.shutdown()
