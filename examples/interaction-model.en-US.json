@@ -1,0 +1,18 @@
+{
+  "interactionModel": {
+    "languageModel": {
+      "invocationName": "hermes helper",
+      "intents": [
+        {
+          "name": "AskHermesIntent",
+          "slots": [{"name": "question", "type": "AMAZON.SearchQuery"}],
+          "samples": ["ask a question {question}", "find out {question}"]
+        },
+        {"name": "AMAZON.CancelIntent"},
+        {"name": "AMAZON.StopIntent"},
+        {"name": "AMAZON.HelpIntent"}
+      ],
+      "types": []
+    }
+  }
+}

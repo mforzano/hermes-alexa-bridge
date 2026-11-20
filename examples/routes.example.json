@@ -1,0 +1,7 @@
+{
+  "skill_id": "synthetic-skill",
+  "routes": [
+    {"user_id": "synthetic-user", "device_id": "synthetic-kitchen", "entity_id": "notify.synthetic_kitchen_speak"},
+    {"user_id": "synthetic-user", "device_id": "synthetic-hall", "entity_id": "notify.synthetic_hall_speak", "default_conversation": "echo"}
+  ]
+}
