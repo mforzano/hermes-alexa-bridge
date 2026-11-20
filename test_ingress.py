@@ -28,7 +28,7 @@ class InteractionModelTests(unittest.TestCase):
         self.assertFalse(dialog_slot['confirmationRequired'])
         self.assertFalse(dialog_intent['confirmationRequired'])
         prompt = next(p for p in model['prompts'] if p['id'] == dialog_slot['prompts']['elicitation'])
-        self.assertIn({'type': 'PlainText', 'value': 'What can I help with?'}, prompt['variations'])
+        self.assertIn({'type': 'PlainText', 'value': 'What can I help you with?'}, prompt['variations'])
 
 
 class IngressTests(unittest.TestCase):

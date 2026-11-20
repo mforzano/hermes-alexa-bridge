@@ -34,7 +34,7 @@
       ]
     },
     "prompts": [
-      {"id": "Elicit.Question", "variations": [{"type": "PlainText", "value": "What can I help with?"}]}
+      {"id": "Elicit.Question", "variations": [{"type": "PlainText", "value": "What can I help you with?"}]}
     ]
   }
 }

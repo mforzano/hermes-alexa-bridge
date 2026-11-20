@@ -127,7 +127,7 @@ class BridgeTests(unittest.TestCase):
             status, reply = handle_alexa({}, json.dumps(event).encode(), lambda *_: True, b.submit_verified)
             self.assertEqual(status, 200)
             self.assertEqual(reply['response'], {
-                'outputSpeech': {'type': 'PlainText', 'text': 'Goodbye.'}, 'shouldEndSession': True,
+                'shouldEndSession': True,
             })
         self.release.set()
         self.assertTrue(b.wait_idle(3))

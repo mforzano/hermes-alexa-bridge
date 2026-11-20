@@ -209,7 +209,7 @@ class InstalledAppTests(unittest.TestCase):
                     self.assertEqual(request(port, launch_body)[0], 400)
                     status, reply = request(port, launch_body, signature=sign(launch_body))
                     self.assertEqual(status, 200)
-                    speech = {'type': 'PlainText', 'text': 'What can I help with?'}
+                    speech = {'type': 'PlainText', 'text': 'What can I help you with?'}
                     self.assertEqual(json.loads(reply)['response'], {
                         'outputSpeech': speech, 'shouldEndSession': False,
                         'reprompt': {'outputSpeech': speech},
