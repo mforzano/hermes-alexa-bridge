@@ -4,6 +4,8 @@ Talk to Hermes from a stock Echo using an Alexa Custom skill. House is the share
 
 ## Install and configure
 
+Start with [Home Assistant setup](docs/home-assistant.md): connect the Amazon account, find the exact Speak entity, and make one Echo say a test sentence. That guide also lists what to give your own setup agent and what to enter privately.
+
 Follow the [installation guide](docs/install.md) to configure one public HTTPS skill route on nginx, connect to private Hermes and Home Assistant, and map each Echo without publishing its IDs. The repo includes the runnable Python app, dependency manifest, nginx example, Alexa interaction model and synthetic config examples. You supply the host, TLS and DNS, a development skill, a private Hermes Runs API and an HA Speak entity per Echo.
 
 From the checkout, with Python 3.11+:
