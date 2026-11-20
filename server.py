@@ -133,6 +133,7 @@ def capture_one(skill_id, output, *, clock=monotonic):
                     json.dump({'user_id': user, 'device_id': device}, stream)
                     stream.write('\n')
                 saved = True
+                return 'paired'
         return 'setup'
     return capture
 

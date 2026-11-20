@@ -21,7 +21,8 @@ SPEECH = {
     'launch': 'Say, ask a question, followed by your question.',
     'unsupported': 'Try saying, ask a question, followed by your question.',
     'rejected': 'I couldn’t accept that request.',
-    'setup': 'The skill is in setup mode.',
+    'setup': 'Pairing was not recorded.',
+    'paired': 'Echo pairing recorded.',
 }
 
 

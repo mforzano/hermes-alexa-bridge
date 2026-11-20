@@ -53,11 +53,16 @@ class CaptureTests(unittest.TestCase):
             ids = {'user_id': system['user']['userId'], 'device_id': system['device']['deviceId']}
             status, reply = call(app, json.dumps(event).encode())
             self.assertEqual(status, 200)
+            self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'],
+                             'Echo pairing recorded.')
             self.assertEqual(json.loads(path.read_bytes()), ids)
             self.assertNotIn(ids['device_id'].encode(), reply)
             self.assertNotIn(ids['user_id'].encode(), reply)
             system['device']['deviceId'] = 'another-device'
-            self.assertEqual(call(app, json.dumps(event).encode()), (status, reply))
+            retry_status, retry_reply = call(app, json.dumps(event).encode())
+            self.assertEqual(retry_status, 200)
+            self.assertEqual(json.loads(retry_reply)['response']['outputSpeech']['text'],
+                             'Pairing was not recorded.')
             self.assertEqual(json.loads(path.read_bytes()), ids)
             if os.name == 'posix':
                 self.assertEqual(path.stat().st_mode & 0o777, 0o600)
