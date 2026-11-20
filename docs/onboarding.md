@@ -1,5 +1,11 @@
 # Pair an Echo and decide who can use it
 
+## Choose the name you say to Alexa
+
+“Hermes Helper” is the example, not a required name. Each self-hosted installation can choose a spoken name for its own development skill. In the Alexa Developer Console, go to **Build → Interaction Model → Invocation** and edit **Skill Invocation Name**. If you're importing the example model, you can instead change `interactionModel.languageModel.invocationName` in the [example JSON](../examples/interaction-model.en-US.json) before import. Save, build, and test “Alexa, open [your name]” on a physical Echo. Use your chosen name in the examples below.
+
+Choose a short, easy-to-pronounce two-word name, such as “Henry Assistant,” and follow [Amazon's invocation name requirements](https://developer.amazon.com/en-US/docs/alexa/custom-skills/choose-the-invocation-name-for-a-custom-skill.html). This is the skill's spoken name, not the listing name or Alexa wake word. Renaming the same development skill preserves its ID, device mappings, and owner enrollment. The spoken name is shared by everyone using that skill in that locale; it isn't a per-person setting on a shared published skill.
+
 ## Start with guest access
 
 Each household runs its own bridge and Alexa development skill. Register the Echo with the Amazon account authorized to test that skill. Start with [Home Assistant setup](home-assistant.md) so you can make the intended Echo speak a test sentence. Then use [Install the bridge](install.md) to set up HTTPS and connect your private Hermes Runs API.
