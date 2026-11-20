@@ -2,7 +2,7 @@
 import hashlib
 import json
 import re
-from collections import Counter, deque
+from collections import Counter, OrderedDict, deque
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from threading import Condition, Thread
@@ -10,10 +10,14 @@ from time import monotonic
 from types import MappingProxyType
 from typing import Mapping
 
+from speech import NO_MORE, PAGE_TTL, SpeechReply, plain_speech, take_page
+from voice_identity import voice_digest
+
 SESSION_KEY = 'alexa:household:voice:v1'
 TERMINAL = {'completed', 'failed', 'cancelled', 'interrupted'}
 FRESH_SECONDS = 150
 ENTITY = re.compile(r'notify\.[a-z0-9_]{1,128}')
+MAX_SPEECH_SCOPES = 64
 
 
 def identifier(value):
@@ -93,6 +97,14 @@ class Job:
     conversation: str
     target: str | None
     order: int
+    speech_scope: tuple[str, str, str] | None
+
+
+@dataclass
+class Continuation:
+    order: int
+    remaining: str = ''
+    expires: float = 0
 
 
 @dataclass
@@ -123,7 +135,7 @@ def paired_request(policy, event):
 class Bridge:
     def __init__(self, policy, hermes, speak, *, max_pending=4, max_seen=256,
                  queue_max_age=120, clock=monotonic, poll_interval=0.25, run_timeout=600,
-                 lane=None):
+                 lane=None, omit_google_maps_urls=False):
         if not 1 <= max_pending <= max_seen <= 4096 or not 1 <= queue_max_age <= 300:
             raise ValueError('invalid queue limits')
         if not 0 < poll_interval <= 10 or not 0 < run_timeout <= 3600:
@@ -131,12 +143,14 @@ class Bridge:
         if lane not in (None, 'owner', 'guest'):
             raise ValueError('invalid profile lane')
         self.lane = lane
+        self.omit_google_maps_urls = omit_google_maps_urls
         self.policy, self.hermes, self.speak = policy, hermes, speak
         self.poll_interval, self.run_timeout = poll_interval, run_timeout
         self.max_pending, self.max_seen = max_pending, max_seen
         self.queue_max_age, self.clock = queue_max_age, clock
         self.cv = Condition()
         self.queue, self.seen, self.stats = deque(), {}, Counter()
+        self.continuations = OrderedDict()
         self.active = {}
         self.unresolved = set()
         self.outstanding = 0
@@ -157,21 +171,26 @@ class Bridge:
             intent = request['intent']
             if intent['name'] in ('AMAZON.CancelIntent', 'AMAZON.StopIntent'):
                 return 'cancelled'
-            if intent['name'] != 'AskHermesIntent':
+            name = intent['name']
+            if name == 'ReadMoreIntent':
+                text, read_more = '', True
+            elif name == 'AskHermesIntent':
+                slots = intent.get('slots', {})
+                question = slots.get('question', {}) if isinstance(slots, dict) else None
+                if not isinstance(question, dict):
+                    return 'rejected'
+                if 'value' not in question:
+                    # Older models without a dialog cannot accept slot directives on intents.
+                    return 'elicit_question' if request.get('dialogState') in ('STARTED', 'IN_PROGRESS') else 'rejected'
+                text = question['value']
+                if not isinstance(text, str) or not 1 <= len(text) <= 1000:
+                    return 'rejected'
+                text.encode('utf-8')
+                if not (text := ' '.join(text.split())) or any(ord(c) < 32 or ord(c) == 127 for c in text):
+                    return 'rejected'
+                read_more = text.casefold().rstrip('.!?') == 'read more'
+            else:
                 return 'unsupported'
-            slots = intent.get('slots', {})
-            question = slots.get('question', {}) if isinstance(slots, dict) else None
-            if not isinstance(question, dict):
-                return 'rejected'
-            if 'value' not in question:
-                # Older models without a dialog cannot accept slot directives on intents.
-                return 'elicit_question' if request.get('dialogState') in ('STARTED', 'IN_PROGRESS') else 'rejected'
-            text = question['value']
-            if not isinstance(text, str) or not 1 <= len(text) <= 1000:
-                return 'rejected'
-            text.encode('utf-8')
-            if not (text := ' '.join(text.split())) or any(ord(c) < 32 or ord(c) == 127 for c in text):
-                return 'rejected'
         except (KeyError, TypeError, ValueError, OverflowError):
             return 'rejected'
 
@@ -179,7 +198,9 @@ class Bridge:
         key = self.request_key(skill, rid)
         if self.lane is not None:
             conversation = f'alexa:{self.lane}:' + conversation.removeprefix('alexa:')
-        fingerprint = hashlib.sha256(json.dumps([user, device, stamp, text]).encode()).digest()
+        speaker = voice_digest(event)
+        scope = (user, device, speaker) if speaker is not None else None
+        fingerprint = hashlib.sha256(json.dumps([user, device, stamp, name, text, speaker]).encode()).digest()
         with self.cv:
             if self.closed or not self.worker.is_alive():
                 return 'busy'
@@ -190,13 +211,30 @@ class Bridge:
                 del self.seen[old]
             if key in self.seen:
                 return 'duplicate' if self.seen[key][0] == fingerprint else 'rejected'
-            if (conversation in self.unresolved or self.outstanding >= self.max_pending
-                    or len(self.seen) >= self.max_seen):
+            if len(self.seen) >= self.max_seen:
+                return 'busy'
+            self._expire_continuations(now)
+            if read_more:
+                self.seen[key] = (fingerprint, now + 2 * FRESH_SECONDS + 5)
+                cursor = self.continuations.get(scope)
+                if cursor is None or not cursor.remaining:
+                    return SpeechReply(NO_MORE)
+                page, cursor.remaining = take_page(cursor.remaining)
+                if not cursor.remaining:
+                    del self.continuations[scope]
+                return SpeechReply(page)
+            if conversation in self.unresolved or self.outstanding >= self.max_pending:
                 return 'busy'
             run = self.active.get(conversation)
             target = run.run_id if run else None
             self.seen[key] = (fingerprint, now + 2 * FRESH_SECONDS + 5)
-            self.queue.append(Job(key, text, entity, now, conversation, target, self.stats['accepted']))
+            order = self.stats['accepted']
+            if scope is not None:
+                self.continuations[scope] = Continuation(order)
+                self.continuations.move_to_end(scope)
+                if len(self.continuations) > MAX_SPEECH_SCOPES:
+                    self.continuations.popitem(last=False)
+            self.queue.append(Job(key, text, entity, now, conversation, target, order, scope))
             self.outstanding += 1
             self.stats['accepted'] += 1
             self.cv.notify_all()
@@ -364,11 +402,30 @@ class Bridge:
         result = status.get('output')
         if status['status'] != 'completed' or not isinstance(result, str) or not result.strip():
             return 'hermes_failed'
+        text = plain_speech(result, omit_google_maps_urls=self.omit_google_maps_urls)
+        if not text:
+            return 'hermes_failed'
+        with self.cv:
+            cursor = self.continuations.get(job.speech_scope)
+            eligible = not self.closed and cursor is not None and cursor.order == job.order
+        page, rest = take_page(text, offer_more=eligible)
         try:
-            self.speak(job.entity, result)
+            self.speak(job.entity, page)
         except Exception:
             return 'ha_failed_or_unknown'
+        if rest and eligible:
+            with self.cv:
+                # Admission can supersede the answer while HA is in flight.
+                if not self.closed and self.continuations.get(job.speech_scope) is cursor:
+                    now = self.clock()
+                    self._expire_continuations(now)
+                    cursor.remaining, cursor.expires = rest, now + PAGE_TTL
         return 'ha_accepted'
+
+    def _expire_continuations(self, now):
+        for scope, cursor in list(self.continuations.items()):
+            if cursor.remaining and cursor.expires <= now:
+                del self.continuations[scope]
 
     def counts(self):
         with self.cv:
@@ -382,6 +439,7 @@ class Bridge:
         """Stop admitting; request drain. False if still draining at deadline."""
         with self.cv:
             self.closed = True
+            self.continuations.clear()
             self.cv.notify_all()
         self.worker.join(timeout)
         return not self.worker.is_alive()

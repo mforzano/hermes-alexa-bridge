@@ -1,5 +1,6 @@
 {
   "routes_file": "routes.private.json",
   "hermes_origin": "http://127.0.0.1:8642",
-  "ha_origin": "https://ha.internal.example"
+  "ha_origin": "https://ha.internal.example",
+  "omit_google_maps_urls": false
 }

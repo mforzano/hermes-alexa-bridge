@@ -24,6 +24,14 @@ The app listens only on `127.0.0.1:8765` by default. nginx forwards only `POST /
 
 See [Onboarding: pairing, Voice ID, and guest access](docs/onboarding.md) for optional owner access and a separate web-only guest profile. Pairing identifies the Echo, not the person speaking.
 
+## Read a long answer in parts
+
+When the Echo says “Say read more to hear the next part,” say **“Alexa, ask Hermes Helper to read more”**. Or open the skill and answer its question prompt with **“read more.”** Each request reads one more page on the same Echo without starting a new Hermes run. Use the name of your installed skill if it differs from Hermes Helper.
+
+Continuation requires the same paired Echo and Alexa Voice ID on both requests. Without a recognized voice, the bridge speaks only the first page and does not offer the rest. Pages expire five minutes after Home Assistant accepts the first page, and a new question from the same speaker on that Echo or a restart clears the previous continuation. The bridge prefers complete sentences, falls back to word boundaries, and skips an indivisible item (including a URL) that cannot fit rather than reading a fragment. Hermes output and history are unchanged.
+
+To omit Google Maps URLs **from Alexa speech only**, set `"omit_google_maps_urls": true` in that installation’s bridge JSON. The option defaults to `false` and does not affect chat. See the [install guide](docs/install.md) for supported link formats.
+
 ## Try the synthetic demo
 
 From the project root, with Python 3.10+ (tested on Windows with 3.14):

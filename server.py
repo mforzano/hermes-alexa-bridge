@@ -104,8 +104,11 @@ def origin_identity(origin):
 def configured_service(path, *, check_only=False, enroll_from=None, enrollment_phrase=None):
     data = read_config(path)
     required = {'routes_file', 'hermes_origin', 'ha_origin'}
-    if not isinstance(data, dict) or not required <= data.keys() <= required | {'owner'}:
+    if not isinstance(data, dict) or not required <= data.keys() <= required | {'owner', 'omit_google_maps_urls'}:
         raise ValueError('invalid config fields')
+    omit_maps = data.get('omit_google_maps_urls', False)
+    if type(omit_maps) is not bool:
+        raise ValueError('omit_google_maps_urls must be a JSON boolean')
     routes = Policy.from_config(read_config(path.parent / data['routes_file']))
     for key in ('hermes_origin', 'ha_origin'):
         origin_identity(data[key])
@@ -115,7 +118,7 @@ def configured_service(path, *, check_only=False, enroll_from=None, enrollment_p
     if 'owner' not in data:
         if enroll_from is not None:
             raise ValueError('configure the owner API before arming enrollment')
-        return None if check_only else Bridge(routes, h, ha.speak)
+        return None if check_only else Bridge(routes, h, ha.speak, omit_google_maps_urls=omit_maps)
 
     owner = data['owner']
     if (not isinstance(owner, dict) or owner.keys() != {'hermes_origin', 'fingerprint_file'}
@@ -149,7 +152,8 @@ def configured_service(path, *, check_only=False, enroll_from=None, enrollment_p
             raise ValueError('enrollment phrase must be register followed by 5–12 lowercase words')
         enrollment = VoiceEnrollment((routes.skill_id, user, device), fingerprint_path, enrollment_phrase,
                                      monotonic() + 120, clock=monotonic, signed_after=time())
-    return None if check_only else VoiceRouter(routes, h, owner_client, ha.speak, fingerprint, enrollment, consumed)
+    return None if check_only else VoiceRouter(routes, h, owner_client, ha.speak, fingerprint, enrollment, consumed,
+                                                omit_google_maps_urls=omit_maps)
 
 
 def capture_one(skill_id, output, *, clock=monotonic):

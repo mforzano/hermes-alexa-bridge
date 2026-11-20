@@ -8,6 +8,7 @@
           "slots": [{"name": "question", "type": "AMAZON.SearchQuery", "samples": ["{question}"]}],
           "samples": ["ask a question {question}", "find out {question}", "tell me {question}"]
         },
+        {"name": "ReadMoreIntent", "samples": ["read more"]},
         {"name": "AMAZON.CancelIntent"},
         {"name": "AMAZON.StopIntent"},
         {"name": "AMAZON.HelpIntent"}

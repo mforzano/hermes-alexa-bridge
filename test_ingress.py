@@ -12,6 +12,8 @@ class InteractionModelTests(unittest.TestCase):
         model = json.loads(path.read_text(encoding='utf-8'))['interactionModel']
         language = model['languageModel']
         self.assertEqual(language['invocationName'], 'hermes helper')
+        read_more = next((i for i in language['intents'] if i['name'] == 'ReadMoreIntent'), {})
+        self.assertIn('read more', read_more.get('samples', []))
         intent = next(i for i in language['intents'] if i['name'] == 'AskHermesIntent')
         self.assertEqual(len(intent['slots']), 1)
         slot = intent['slots'][0]

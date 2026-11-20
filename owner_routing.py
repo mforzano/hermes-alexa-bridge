@@ -30,11 +30,12 @@ def read_fingerprint(path):
 
 class VoiceRouter:
     """One immutable route choice per admission; no cross-profile fallback."""
-    def __init__(self, policy, guest, owner, speak, fingerprint, enrollment=None, enrolled_request=None):
+    def __init__(self, policy, guest, owner, speak, fingerprint, enrollment=None, enrolled_request=None, *,
+                 omit_google_maps_urls=False):
         self.policy, self.fingerprint = policy, fingerprint
         self.enrollment, self.enrolled_request = enrollment, enrolled_request
-        self.guest = Bridge(policy, guest, speak, lane='guest')
-        self.owner = Bridge(policy, owner, speak, lane='owner')
+        self.guest = Bridge(policy, guest, speak, lane='guest', omit_google_maps_urls=omit_google_maps_urls)
+        self.owner = Bridge(policy, owner, speak, lane='owner', omit_google_maps_urls=omit_google_maps_urls)
         self.lock = Lock()
         self.closed = False
 

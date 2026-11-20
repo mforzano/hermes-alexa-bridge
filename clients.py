@@ -2,15 +2,15 @@
 import json
 import re
 from time import monotonic
-from unicodedata import category
 from urllib.error import HTTPError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from bridge import ENTITY
+from speech import plain_speech, take_page
 
 MAX_RESPONSE = 1024 * 1024
-MAX_SPEECH = 600
+
 VOICE_INSTRUCTIONS = ('This is a shared-room voice channel. Answer briefly in plain language suitable for speech. '
                       'Do not disclose credentials or private information or perform consequential actions.')
 OWNER_VOICE_INSTRUCTIONS = ('This is an enrolled-owner voice channel, but replies may be overheard. '
@@ -155,11 +155,9 @@ class HomeAssistant:
     def speak(self, entity, text):
         if not ENTITY.fullmatch(entity):
             raise ValueError('expected one notify entity')
-        plain = ''.join(' ' if c in '<>&' or category(c).startswith('C') else c for c in text)
-        plain = ' '.join(plain.split())
+        plain = plain_speech(text)
         if not plain:
             raise ValueError('no speakable text')
-        if len(plain) > MAX_SPEECH:
-            plain = plain[:MAX_SPEECH - 1].rstrip() + '…'
+        plain, _ = take_page(plain, offer_more=False)
         self.endpoint.post('/api/services/notify/send_message', {'entity_id': entity, 'message': plain},
                            response=False)

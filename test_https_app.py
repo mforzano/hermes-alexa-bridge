@@ -149,8 +149,11 @@ class InstalledAppTests(unittest.TestCase):
 
         opener = Mock()
         opener.open.side_effect = lambda *_a, **_kw: FixtureReply(cert)
+        sentence = 'A synthetic answer with a deliberately repeated sentence.'
+        first_page = ' '.join([sentence] * 9)
+        remainder = ' '.join([sentence] * 3) + ' End of answer.'
         fake_runs = {'/v1/runs': {'run_id': 'run_fixture'}, '/v1/runs/run_fixture': {
-            'run_id': 'run_fixture', 'status': 'completed', 'output': 'Synthetic answer.'}}
+            'run_id': 'run_fixture', 'status': 'completed', 'output': first_page + ' ' + remainder}}
         event = envelope()
         system = event['context']['System']
         system['person'] = {'personId': 'synthetic-owner'}
@@ -231,6 +234,17 @@ class InstalledAppTests(unittest.TestCase):
                     self.assertEqual(status, 200)
                     self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'], 'Working on it.')
                     self.assertTrue(bridge.wait_idle(4))
+                    more = envelope(rid='more-' + person, text='read more')
+                    more['session'] = {'sessionId': 'new-session-for-' + person, 'new': True}
+                    more['context']['System']['person'] = {'personId': person}
+                    if person == 'synthetic-owner':
+                        more['request']['intent'] = {'name': 'ReadMoreIntent'}
+                    body = json.dumps(more).encode()
+                    self.assertEqual(request(port, body)[0], 400)
+                    status, reply = request(port, body, signature=sign(body))
+                    self.assertEqual(status, 200)
+                    self.assertEqual(json.loads(reply)['response'], {
+                        'outputSpeech': {'type': 'PlainText', 'text': remainder}, 'shouldEndSession': True})
                 for lane, calls in (('owner', owner_calls), ('guest', guest_calls)):
                     self.assertEqual([entry[0] for entry in calls], ['/v1/runs', '/v1/runs/run_fixture'])
                     _, headers, payload = calls[0]
@@ -239,8 +253,8 @@ class InstalledAppTests(unittest.TestCase):
                     self.assertEqual(payload['input'], 'question for synthetic-' + lane)
                     self.assertEqual('Do not disclose credentials or private information' in payload['instructions'],
                                      lane == 'guest')
-                self.assertEqual([entry[2] for entry in spoken], [
-                    {'entity_id': 'notify.synthetic_speak', 'message': 'Synthetic answer.'}] * 2)
+                self.assertEqual([entry[2] for entry in spoken], [{'entity_id': 'notify.synthetic_speak',
+                    'message': first_page + ' Say read more to hear the next part.'}] * 2)
                 opener.open.assert_called_once_with(CERT, timeout=2)
             finally:
                 http.task_dispatcher.shutdown()

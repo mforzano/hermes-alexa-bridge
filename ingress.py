@@ -7,6 +7,7 @@ from urllib.request import ProxyHandler, build_opener
 
 from bridge import fresh_timestamp
 from clients import NoRedirect
+from speech import SpeechReply
 
 # Deliberately support only ordinary Amazon S3 object paths in the ASK namespace.
 CERT_URL = re.compile(r'https://s3\.amazonaws\.com(?::443)?/echo\.api/(?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_.-]+', re.ASCII)
@@ -68,7 +69,7 @@ def handle_alexa(headers, body, verify, submit_verified):
     if outcome == 'cancelled':
         return 200, {'version': '1.0', 'response': {'shouldEndSession': True}}
     elicit = outcome in ('launch', 'elicit_question')
-    speech = {'type': 'PlainText', 'text': SPEECH[outcome]}
+    speech = {'type': 'PlainText', 'text': outcome.text if isinstance(outcome, SpeechReply) else SPEECH[outcome]}
     response = {'outputSpeech': speech, 'shouldEndSession': not elicit}
     if elicit:
         response['reprompt'] = {'outputSpeech': speech}
