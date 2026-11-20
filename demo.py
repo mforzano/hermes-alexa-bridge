@@ -50,7 +50,7 @@ def run_synthetic():
                 start = perf_counter()
                 status, reply = handle_alexa({}, raw, lambda _headers, body: body == raw, bridge.submit_verified)
                 ack_ms.append(round((perf_counter() - start) * 1000, 3))
-                if status != 200 or 'when it' not in reply['response']['outputSpeech']['text']:
+                if status != 200 or reply['response']['outputSpeech']['text'] != 'Working on it.':
                     raise RuntimeError('synthetic ingress failed to acknowledge')
                 sessions.append(sid)
                 if not bridge.wait_idle(8):

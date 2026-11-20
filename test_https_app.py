@@ -175,7 +175,7 @@ class InstalledAppTests(unittest.TestCase):
                 self.assertEqual(calls, [])
                 status, reply = request(port, raw, signature=sig)
                 self.assertEqual(status, 200)
-                self.assertIn(b'when it', reply)
+                self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'], 'Working on it.')
                 self.assertTrue(bridge.wait_idle(4))
                 self.assertEqual(spoken[0][2], {'entity_id': 'notify.synthetic_speak', 'message': 'Synthetic answer.'})
                 opener.open.assert_called_once_with(CERT, timeout=2)

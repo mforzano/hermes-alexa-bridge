@@ -14,7 +14,7 @@ CERT_MAX = 64 * 1024
 
 MAX_BODY = 32 * 1024
 SPEECH = {
-    'accepted': 'I’ll send the reply to this Echo when it’s ready.',
+    'accepted': 'Working on it.',
     'steering': 'I received your update for the running conversation. If it needs a separate turn, I’ll reply here.',
     'duplicate': 'I already received that request.',
     'busy': 'Hermes is busy. Please try again shortly.',
