@@ -57,6 +57,8 @@ Do this with `serve` stopped and only your controlled development testers enable
 
 Edit `routes.private.json` privately. Set `skill_id` to the console ID, remove **both** synthetic rows and create one row per captured pair with `user_id`, `device_id`, and the verified `entity_id` (`notify.…`). The default conversation is `house`; optionally set `default_conversation` to `echo` for every row on the same device. Never map several physical devices to one notify entity. Remove the temporary captures after copying; never commit or paste real IDs or tokens in issues, logs, or chat. Edit `config.json` with both private origins, scheme and optional port only, no path, token, or query. `routes_file` is relative to the config directory unless given as an absolute path.
 
+For what pairing grants, and how Voice ID differs from pairing, see [Onboarding: pairing and access](onboarding.md).
+
 ## 5. Check, start, and test one Echo
 
 Use a private Bash terminal, with shell tracing off. Enter both bearer keys when prompted (input hidden); don't put keys into command arguments or Git:

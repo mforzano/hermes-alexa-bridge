@@ -20,6 +20,10 @@ python3 -m venv .venv
 
 The app listens only on `127.0.0.1:8765` by default. nginx forwards only `POST /alexa`. There is no unsigned mode, public enrollment endpoint or upstream API proxy. `check` loads the real SDK and validates local configuration without binding or making network calls. Live Alexa signatures, Hermes continuity and physical Echo playback still require on-site acceptance.
 
+## Pair an Echo and choose access
+
+See [Onboarding: pairing, Voice ID, and guest access](docs/onboarding.md) for what the public bridge supports today and how experimental voice registration is intended to work. Pairing identifies the Echo, not the person speaking.
+
 ## Try the synthetic demo
 
 From the project root, with Python 3.10+ (tested on Windows with 3.14):

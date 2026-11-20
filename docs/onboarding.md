@@ -1,0 +1,20 @@
+# Pair an Echo and decide who can use it
+
+## Use the public bridge today
+
+Each household runs its own bridge and Alexa development skill. Register the Echo with the Amazon account authorized to test that skill. Start with [Home Assistant setup](home-assistant.md) so you can make the intended Echo speak a test sentence. Then use [Install the bridge](install.md) to set up HTTPS and connect your private Hermes Runs API.
+
+1. **Pair the Echo.** Start the short capture described in the [device mapping instructions](install.md#4-map-one-echo-at-a-time-without-publishing-ids). On the intended Echo say, “Alexa, open Hermes Helper.” Listen for “Echo pairing recorded.” The person running the bridge then maps that captured device to the Home Assistant Speak entity they already tested. Repeat for each Echo. This step identifies the device and tells the bridge where to send the answer; it does not identify the speaker.
+2. **Choose what a paired Echo can use.** The public bridge currently sends all questions from permitted Echo/account pairs to one configured Hermes profile. It does not distinguish speakers. To offer general questions and live web lookups without granting access to your personal Hermes setup, use a dedicated profile with only the `web` toolset and no personal connectors, memory, or files exposed to its tools. For an existing dedicated profile called `alexavoice`, set the API toolsets with `hermes -p alexavoice config set platform_toolsets.api_server '["web"]'` in Bash, then verify the running profile and test a live lookup. This setting affects that Hermes API profile, not individual speakers. If you instead configure a profile with personal tools, people who can invoke the skill on a paired Echo can ask that profile to use those tools.
+3. **Try a question.** Start the bridge and say, “Alexa, ask Hermes Helper to find out what two plus two is.” Expect “Working on it,” then a separate answer on that same Echo. An unmapped Echo cannot start a Hermes run, even if Alexa lets it invoke the development skill.
+
+## Voice ID onboarding — experimental, not in the public bridge yet
+
+Device pairing and voice registration are separate. The first Voice ID enrollment worked on a development Echo; the public bridge does not yet ship enrollment commands or use voice identity to route tool access. The flow below describes the intended behavior, not settings you can enable today.
+
+1. **Pair each Echo once**, as above.
+2. **Optionally register an owner.** Set up Alexa Voice ID and enable Personalize skills on the owner's Alexa profile. The bridge operator opens a short, one-use registration window for a paired Echo. The owner speaks the phrase the operator gives them and hears “Voice ID recorded” when Alexa's recognized profile is saved. Register once per owner and skill/account, not once per room. A new Echo still needs its own device pairing. No PIN or phone step for ordinary use.
+3. **Use the speaker's access level.** On a paired Echo, an unregistered speaker—or a registered owner Alexa doesn't recognize that time—gets the guest profile: general questions and live web lookups by default. No personal email, purchases, files, connected accounts, or owner chat history. An enrolled speaker Alexa recognizes gets the owner profile's configured tools, without a second prompt from the bridge. If nobody registers, all paired Echos remain in guest mode. An unmapped Echo gets neither profile.
+4. **Keep histories separate.** Guest requests and owner requests use different profiles and conversation keys. Guests can't see owner replies through recall or steer an owner run. The answer from either profile still goes back to the Echo that asked. The owner's Echo conversation stays separate from the owner's chat app conversation.
+
+Before calling Voice ID access ready, test all three cases on real Echos: a recognized owner can make a harmless owner-only query, an unregistered or unrecognized speaker gets only guest access, and an unmapped Echo cannot start a run. Repeat the owner test in a second room without registering again.
