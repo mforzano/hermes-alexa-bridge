@@ -5,14 +5,36 @@
       "intents": [
         {
           "name": "AskHermesIntent",
-          "slots": [{"name": "question", "type": "AMAZON.SearchQuery"}],
-          "samples": ["ask a question {question}", "find out {question}"]
+          "slots": [{"name": "question", "type": "AMAZON.SearchQuery", "samples": ["{question}"]}],
+          "samples": ["ask a question {question}", "find out {question}", "tell me {question}"]
         },
         {"name": "AMAZON.CancelIntent"},
         {"name": "AMAZON.StopIntent"},
         {"name": "AMAZON.HelpIntent"}
       ],
       "types": []
-    }
+    },
+    "dialog": {
+      "delegationStrategy": "SKILL_RESPONSE",
+      "intents": [
+        {
+          "name": "AskHermesIntent",
+          "confirmationRequired": false,
+          "prompts": {},
+          "slots": [
+            {
+              "name": "question",
+              "type": "AMAZON.SearchQuery",
+              "elicitationRequired": true,
+              "confirmationRequired": false,
+              "prompts": {"elicitation": "Elicit.Question"}
+            }
+          ]
+        }
+      ]
+    },
+    "prompts": [
+      {"id": "Elicit.Question", "variations": [{"type": "PlainText", "value": "What can I help with?"}]}
+    ]
   }
 }

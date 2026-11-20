@@ -1,8 +1,34 @@
 import json
 import unittest
+from pathlib import Path
 
 from ingress import handle_alexa, MAX_BODY
 from test_bridge import envelope
+
+
+class InteractionModelTests(unittest.TestCase):
+    def test_question_samples_and_manual_dialog(self):
+        path = Path(__file__).with_name('examples') / 'interaction-model.en-US.json'
+        model = json.loads(path.read_text(encoding='utf-8'))['interactionModel']
+        language = model['languageModel']
+        self.assertEqual(language['invocationName'], 'hermes helper')
+        intent = next(i for i in language['intents'] if i['name'] == 'AskHermesIntent')
+        self.assertEqual(len(intent['slots']), 1)
+        slot = intent['slots'][0]
+        self.assertEqual((slot['name'], slot['type']), ('question', 'AMAZON.SearchQuery'))
+        self.assertIn('{question}', slot['samples'])
+        self.assertTrue({'tell me {question}', 'find out {question}', 'ask a question {question}'}
+                        <= set(intent['samples']))
+        self.assertNotIn('{question}', [sample.strip() for sample in intent['samples']])
+        dialog = model['dialog']
+        self.assertEqual(dialog['delegationStrategy'], 'SKILL_RESPONSE')
+        dialog_intent = next(i for i in dialog['intents'] if i['name'] == intent['name'])
+        dialog_slot = next(s for s in dialog_intent['slots'] if s['name'] == slot['name'])
+        self.assertTrue(dialog_slot['elicitationRequired'])
+        self.assertFalse(dialog_slot['confirmationRequired'])
+        self.assertFalse(dialog_intent['confirmationRequired'])
+        prompt = next(p for p in model['prompts'] if p['id'] == dialog_slot['prompts']['elicitation'])
+        self.assertIn({'type': 'PlainText', 'value': 'What can I help with?'}, prompt['variations'])
 
 
 class IngressTests(unittest.TestCase):

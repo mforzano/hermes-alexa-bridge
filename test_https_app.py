@@ -197,13 +197,40 @@ class InstalledAppTests(unittest.TestCase):
                 self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'], 'Voice ID recorded.')
                 self.assertEqual(guest_calls + owner_calls, [])
                 for person in ('synthetic-owner', 'synthetic-guest'):
+                    calls_before_launch = guest_calls + owner_calls
+                    spoken_before_launch = len(spoken)
+                    session = {'sessionId': 'session-for-' + person, 'new': True}
+                    launch = envelope(rid='launch-' + person)
+                    launch['session'] = session
+                    launch['context']['System']['person'] = {'personId': person}
+                    launch['request']['type'] = 'LaunchRequest'
+                    del launch['request']['intent']
+                    launch_body = json.dumps(launch).encode()
+                    self.assertEqual(request(port, launch_body)[0], 400)
+                    status, reply = request(port, launch_body, signature=sign(launch_body))
+                    self.assertEqual(status, 200)
+                    speech = {'type': 'PlainText', 'text': 'What can I help with?'}
+                    self.assertEqual(json.loads(reply)['response'], {
+                        'outputSpeech': speech, 'shouldEndSession': False,
+                        'reprompt': {'outputSpeech': speech},
+                        'directives': [{'type': 'Dialog.ElicitSlot', 'slotToElicit': 'question',
+                                        'updatedIntent': {'name': 'AskHermesIntent',
+                                                          'confirmationStatus': 'NONE', 'slots': {
+                                            'question': {'name': 'question', 'confirmationStatus': 'NONE'}}}}],
+                    })
+                    self.assertTrue(bridge.wait_idle(4))
+                    self.assertEqual(guest_calls + owner_calls, calls_before_launch)
+                    self.assertEqual(len(spoken), spoken_before_launch)
+
                     ordinary = envelope(rid=person, text='question for ' + person)
+                    ordinary['session'] = {**session, 'new': False}
+                    ordinary['request']['dialogState'] = 'IN_PROGRESS'
                     ordinary['context']['System']['person'] = {'personId': person}
                     body = json.dumps(ordinary).encode()
                     status, reply = request(port, body, signature=sign(body))
                     self.assertEqual(status, 200)
                     self.assertEqual(json.loads(reply)['response']['outputSpeech']['text'], 'Working on it.')
-                self.assertTrue(bridge.wait_idle(4))
+                    self.assertTrue(bridge.wait_idle(4))
                 for lane, calls in (('owner', owner_calls), ('guest', guest_calls)):
                     self.assertEqual([entry[0] for entry in calls], ['/v1/runs', '/v1/runs/run_fixture'])
                     _, headers, payload = calls[0]

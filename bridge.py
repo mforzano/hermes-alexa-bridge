@@ -152,9 +152,21 @@ class Bridge:
                 return 'launch'
             if request['type'] == 'SessionEndedRequest':
                 return 'ended'
-            if request['type'] != 'IntentRequest' or request['intent']['name'] != 'AskHermesIntent':
+            if request['type'] != 'IntentRequest':
                 return 'unsupported'
-            text = request['intent']['slots']['question']['value']
+            intent = request['intent']
+            if intent['name'] in ('AMAZON.CancelIntent', 'AMAZON.StopIntent'):
+                return 'cancelled'
+            if intent['name'] != 'AskHermesIntent':
+                return 'unsupported'
+            slots = intent.get('slots', {})
+            question = slots.get('question', {}) if isinstance(slots, dict) else None
+            if not isinstance(question, dict):
+                return 'rejected'
+            if 'value' not in question:
+                # Older models without a dialog cannot accept slot directives on intents.
+                return 'elicit_question' if request.get('dialogState') in ('STARTED', 'IN_PROGRESS') else 'rejected'
+            text = question['value']
             if not isinstance(text, str) or not 1 <= len(text) <= 1000:
                 return 'rejected'
             text.encode('utf-8')

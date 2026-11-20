@@ -13,12 +13,15 @@ CERT_URL = re.compile(r'https://s3\.amazonaws\.com(?::443)?/echo\.api/(?:[A-Za-z
 CERT_MAX = 64 * 1024
 
 MAX_BODY = 32 * 1024
+QUESTION_PROMPT = 'What can I help with?'
 SPEECH = {
     'accepted': 'Working on it.',
     'steering': 'I received your update for the running conversation. If it needs a separate turn, I’ll reply here.',
     'duplicate': 'I already received that request.',
     'busy': 'Hermes is busy. Please try again shortly.',
-    'launch': 'Say, ask a question, followed by your question.',
+    'launch': QUESTION_PROMPT,
+    'elicit_question': QUESTION_PROMPT,
+    'cancelled': 'Goodbye.',
     'unsupported': 'Try saying, ask a question, followed by your question.',
     'rejected': 'I couldn’t accept that request.',
     'setup': 'Pairing was not recorded.',
@@ -62,11 +65,20 @@ def handle_alexa(headers, body, verify, submit_verified):
     outcome = submit_verified(event)
     if outcome == 'ended':
         return 200, {'version': '1.0', 'response': {}}
-    launch = outcome == 'launch'
+    elicit = outcome in ('launch', 'elicit_question')
     speech = {'type': 'PlainText', 'text': SPEECH[outcome]}
-    response = {'outputSpeech': speech, 'shouldEndSession': not launch}
-    if launch:
+    response = {'outputSpeech': speech, 'shouldEndSession': not elicit}
+    if elicit:
         response['reprompt'] = {'outputSpeech': speech}
+        response['directives'] = [{
+            'type': 'Dialog.ElicitSlot',
+            'slotToElicit': 'question',
+            'updatedIntent': {
+                'name': 'AskHermesIntent',
+                'confirmationStatus': 'NONE',
+                'slots': {'question': {'name': 'question', 'confirmationStatus': 'NONE'}},
+            },
+        }]
     return 200, {'version': '1.0', 'response': response}
 
 

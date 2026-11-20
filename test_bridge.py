@@ -1,9 +1,11 @@
+import json
 import unittest
 from datetime import datetime, timezone
 from threading import Event
 from time import monotonic
 
 from bridge import Bridge, Policy
+from ingress import handle_alexa
 
 
 class SyntheticRuns:
@@ -90,6 +92,56 @@ class BridgeTests(unittest.TestCase):
         for item in bad:
             with self.subTest(item=repr(item)[:100]):
                 self.assertEqual(b.submit_verified(item), 'rejected')
+        self.assertFalse(self.called)
+
+    def test_missing_question_reelicits_without_admitting_work(self):
+        b = self.create()
+        for fields in ({}, {'slots': {}}, {'slots': {'question': {'name': 'question'}}}):
+            with self.subTest(fields=fields):
+                event = envelope()
+                event['request']['intent'] = {'name': 'AskHermesIntent', **fields}
+                event['request']['dialogState'] = 'STARTED'
+                status, reply = handle_alexa({}, json.dumps(event).encode(), lambda *_: True, b.submit_verified)
+                self.assertEqual(status, 200)
+                self.assertFalse(reply['response']['shouldEndSession'])
+                self.assertEqual(reply['response']['directives'][0]['slotToElicit'], 'question')
+        self.assertEqual(b.counts().get('accepted', 0), 0)
+        self.assertFalse(self.called)
+
+    def test_missing_question_outside_active_dialog_is_rejected(self):
+        b = self.create()
+        event = envelope()
+        del event['request']['intent']['slots']
+        self.assertEqual(b.submit_verified(event), 'rejected')
+        event['request']['dialogState'] = 'COMPLETED'
+        self.assertEqual(b.submit_verified(event), 'rejected')
+        self.assertEqual(b.counts().get('accepted', 0), 0)
+
+    def test_cancel_and_stop_end_only_the_alexa_session(self):
+        b = self.create()
+        self.assertEqual(b.submit_verified(envelope()), 'accepted')
+        self.assertTrue(self.entered.wait(1))
+        for name in ('AMAZON.CancelIntent', 'AMAZON.StopIntent'):
+            event = envelope(rid=name)
+            event['request']['intent'] = {'name': name}
+            status, reply = handle_alexa({}, json.dumps(event).encode(), lambda *_: True, b.submit_verified)
+            self.assertEqual(status, 200)
+            self.assertEqual(reply['response'], {
+                'outputSpeech': {'type': 'PlainText', 'text': 'Goodbye.'}, 'shouldEndSession': True,
+            })
+        self.release.set()
+        self.assertTrue(b.wait_idle(3))
+        self.assertEqual([call[:2] for call in self.called], [('Hermes', 'hello'), ('notify.a_speak', 'answer hello')])
+
+    def test_malformed_question_is_rejected_without_admitting_work(self):
+        b = self.create()
+        for slots in (None, [], {'question': None}, {'question': []},
+                      *({'question': {'value': v}} for v in (None, 5, '', ' \t ', 'a\x00b'))):
+            with self.subTest(slots=slots):
+                event = envelope()
+                event['request']['intent']['slots'] = slots
+                self.assertEqual(b.submit_verified(event), 'rejected')
+        self.assertEqual(b.counts().get('accepted', 0), 0)
         self.assertFalse(self.called)
 
     def test_failed_hermes_has_no_notification_and_worker_continues(self):
