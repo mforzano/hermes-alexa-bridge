@@ -1,0 +1,8 @@
+{
+  "source_home": "C:/Private/Hermes/owner-profile",
+  "ledger": "C:/Private/AlexaCompletion/relay.db",
+  "owner_keys": ["alexa:owner:household:voice:v1"],
+  "photon_home": "C:/Private/Hermes/photon-profile",
+  "photon_dm_id": "REPLACE_WITH_VERIFIED_NATIVE_DM_ID",
+  "hermes_executable": "C:/Private/Hermes/bin/hermes.exe"
+}

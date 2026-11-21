@@ -32,6 +32,10 @@ Continuation requires the same paired Echo and Alexa Voice ID on both requests. 
 
 To omit Google Maps URLs **from Alexa speech only**, set `"omit_google_maps_urls": true` in that installation’s bridge JSON. The option defaults to `false` and does not affect chat. See the [install guide](docs/install.md) for supported link formats.
 
+## Optional: iMessage status for owner Alexa background work
+
+[Configure the opt-in Photon relay](docs/imessage-completions.md) to receive detached completion status in one verified existing iMessage DM. Ordinary Alexa speech is unchanged.
+
 ## Try the synthetic demo
 
 From the project root, with Python 3.10+ (tested on Windows with 3.14):
